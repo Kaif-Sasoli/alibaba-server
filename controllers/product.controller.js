@@ -175,6 +175,7 @@ export const relatedProducts = async (req, res) => {
 
   export const searchProducts = async (req, res) => {
     try {
+      
       let { 
         q, 
         category, 
@@ -214,45 +215,48 @@ export const relatedProducts = async (req, res) => {
       // images: { $slice: 1 },
 
        const products = await productModel.aggregate([
-      { $match: filters },
-      { $sort: sortOptions },
-      { $skip: skip },
-      { $limit: limit },
-      {
-        $project: {
-          title: 1,
-          price: 1,
-          images: 1,
-          stars: 1,
-          rating: 1,
-          totalOrders: 1,
-          freeShipping: 1,
-          description: 1,
-          discount: 1,
-          category: 1,
-          reviewCount: { $size: { $ifNull: ["$reviews", []] } }
-        }
-      },
-      // Populate category name
-      {
-        $lookup: {
-          from: "categories",
-          localField: "category",
-          foreignField: "_id",
-          as: "category"
-        }
-      },
-      { $unwind: { path: "$category", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: "supplierprofiles",
-          localField: "supplier",
-          foreignField: "_id",
-          as: "supplier"
-        }
-      },
-      { $unwind: { path: "$supplier", preserveNullAndEmptyArrays: true } }
-    ]);
+          // Join category first
+          {
+            $lookup: {
+              from: "categories",
+              localField: "category",
+              foreignField: "_id",
+              as: "category"
+            }
+          },
+          { $unwind: { path: "$category", preserveNullAndEmptyArrays: true } },       
+
+          // Match based on title/description or category name
+          {
+            $match: q
+              ? {
+                  $or: [
+                    { title: { $regex: q, $options: "i" } },
+                    { description: { $regex: q, $options: "i" } },
+                    { "category.name": { $regex: q, $options: "i" } }
+                  ]
+                }
+              : {}
+          },        
+
+          { $sort: sortOptions },
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $project: {
+              title: 1,
+              price: 1,
+              images: 1,
+              stars: 1,
+              totalOrders: 1,
+              freeShipping: 1,
+              description: 1,
+              discount: 1,
+              "category.name": 1,
+              reviewCount: { $size: { $ifNull: ["$reviews", []] } }
+            }
+          }
+        ]);       
 
       const total = await productModel.countDocuments(filters);
 
@@ -267,7 +271,6 @@ export const relatedProducts = async (req, res) => {
         }
       });
     } catch (error) {
-      console.error("Error in searchProducts:", error);
       res.status(500).json({ message: "Server Error" });
     }
   };
